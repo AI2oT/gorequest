@@ -416,6 +416,8 @@ func (s *SuperAgent) Query(content interface{}) *SuperAgent {
 		s.queryStruct(v.Interface())
 	case reflect.Map:
 		s.queryMap(v.Interface())
+	case reflect.Ptr:
+		s.queryStruct(v.Elem().Interface())
 	default:
 	}
 	return s
@@ -430,7 +432,7 @@ func (s *SuperAgent) queryStruct(content interface{}) *SuperAgent {
 			s.Errors = append(s.Errors, err)
 		} else {
 			for k, v := range val {
-				k = strings.ToLower(k)
+				//k = strings.ToLower(k)
 				var queryVal string
 				switch t := v.(type) {
 				case string:
