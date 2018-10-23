@@ -732,12 +732,13 @@ func (s *SuperAgent) SendString(content string) *SuperAgent {
 }
 
 type File struct {
-	Filename  string
-	Fieldname string
-	Data      []byte
+	Filename    string
+	Fieldname   string
+	ContentType string
+	Data        []byte
 }
 
-// SendFile function works only with type "multipart". The function accepts one mandatory and up to two optional arguments. The mandatory (first) argument is the file.
+// SendFile function works only with type "multipart". The function accepts one mandatory and up to three optional arguments. The mandatory (first) argument is the file.
 // The function accepts a path to a file as string:
 //
 //      gorequest.New().
@@ -784,16 +785,29 @@ type File struct {
 //        SendFile(b, "", "my_custom_fieldname"). // filename left blank, will become "example_file.ext"
 //        End()
 //
+//The third optional argument (fourth argument overall) is the file contentType. It defaults to application/octet-stream.
+//
+//      b, _ := ioutil.ReadFile("./example_file.ext")
+//      gorequest.New().
+//        Post("http://example.com").
+//        Type("multipart").
+//        SendFile(b, "", "my_custom_fieldname", "image/jpeg").
+//        End()
+//
 func (s *SuperAgent) SendFile(file interface{}, args ...string) *SuperAgent {
 
 	filename := ""
 	fieldname := "file"
+	contentType := "application/octet-stream"
 
 	if len(args) >= 1 && len(args[0]) > 0 {
 		filename = strings.TrimSpace(args[0])
 	}
 	if len(args) >= 2 && len(args[1]) > 0 {
 		fieldname = strings.TrimSpace(args[1])
+	}
+	if len(args) >= 3 && len(args[2]) > 0 {
+		contentType = strings.TrimSpace(args[2])
 	}
 	if fieldname == "file" || fieldname == "" {
 		fieldname = "file" + strconv.Itoa(len(s.FileData)+1)
@@ -815,9 +829,10 @@ func (s *SuperAgent) SendFile(file interface{}, args ...string) *SuperAgent {
 			return s
 		}
 		s.FileData = append(s.FileData, File{
-			Filename:  filename,
-			Fieldname: fieldname,
-			Data:      data,
+			Filename:    filename,
+			Fieldname:   fieldname,
+			ContentType: contentType,
+			Data:        data,
 		})
 	case reflect.Slice:
 		slice := makeSliceOfReflectValue(v)
@@ -825,9 +840,10 @@ func (s *SuperAgent) SendFile(file interface{}, args ...string) *SuperAgent {
 			filename = "filename"
 		}
 		f := File{
-			Filename:  filename,
-			Fieldname: fieldname,
-			Data:      make([]byte, len(slice)),
+			Filename:    filename,
+			Fieldname:   fieldname,
+			ContentType: contentType,
+			Data:        make([]byte, len(slice)),
 		}
 		for i := range slice {
 			f.Data[i] = slice[i].(byte)
@@ -853,9 +869,10 @@ func (s *SuperAgent) SendFile(file interface{}, args ...string) *SuperAgent {
 				return s
 			}
 			s.FileData = append(s.FileData, File{
-				Filename:  filename,
-				Fieldname: fieldname,
-				Data:      data,
+				Filename:    filename,
+				Fieldname:   fieldname,
+				ContentType: contentType,
+				Data:        data,
 			})
 			return s
 		}
@@ -1235,9 +1252,15 @@ func (s *SuperAgent) MakeRequest() (*http.Request, error) {
 		}
 
 		// add the files
+		quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 		if len(s.FileData) != 0 {
 			for _, file := range s.FileData {
-				fw, _ := mw.CreateFormFile(file.Fieldname, file.Filename)
+				h := make(textproto.MIMEHeader)
+				h.Set("Content-Disposition",
+					fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+						quoteEscaper.Replace(file.Fieldname), quoteEscaper.Replace(file.Filename)))
+				h.Set("Content-Type", file.ContentType)
+				fw, _ := mw.CreatePart(h)
 				fw.Write(file.Data)
 			}
 			contentReader = buf
